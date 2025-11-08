@@ -35,5 +35,8 @@ local function updateHands(material, color, transparency)
     currentTransparency = transparency
 end
 RunService.Heartbeat:Connect(applyChanges)
-
+return {
+    updateHands = updateHands,
+    applyChanges = applyChanges
+}
 --updateHands(Enum.Material.Neon, Color3.new(1, 0, 0), 0.5)
