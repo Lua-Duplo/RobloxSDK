@@ -9,7 +9,6 @@ local FirstPerson = ViewModels:FindFirstChild("FirstPerson") if not FirstPerson 
 
 local currentMaterial = Enum.Material.Plastic
 local currentColor = Color3.new(1, 1, 1)  -- Белый
-local currentTransparency = 0
 
 local function applyChanges()
     for _, obj in ipairs(FirstPerson:GetChildren()) do
@@ -26,7 +25,6 @@ local function applyChanges()
                     
                     part.Material = currentMaterial
                     part.Color = currentColor
-                    part.Transparency = currentTransparency
                 end
             end
             break
@@ -44,15 +42,9 @@ local function setColor(color)
     applyChanges()
 end
 
-local function setTransparency(transparency)
-    currentTransparency = transparency
-    applyChanges()
-end
-
 RunService.Heartbeat:Connect(applyChanges)
 
 return {
     setMaterial = setMaterial,
     setColor = setColor, 
-    setTransparency = setTransparency
 }
