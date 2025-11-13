@@ -31,12 +31,26 @@ fov_circle.Filled = false
 fov_circle.Visible = SilentAim.ShowFOV
 fov_circle.Color = Color3.fromRGB(54, 57, 241)
 
--- Target Indicator (Image)
-local target_indicator = Drawing.new("Image")
-target_indicator.Visible = false
-target_indicator.ZIndex = 999
-target_indicator.Size = Vector2.new(30, 30)
-target_indicator.Data = "rbxassetid://5998624788"
+-- Target Indicator (Vector drawings instead of image)
+local target_circle = Drawing.new("Circle")
+target_circle.Visible = false
+target_circle.ZIndex = 999
+target_circle.Radius = 12
+target_circle.Thickness = 2
+target_circle.Filled = false
+target_circle.Color = Color3.fromRGB(255, 0, 0)
+
+local target_cross1 = Drawing.new("Line")
+target_cross1.Visible = false
+target_cross1.ZIndex = 999
+target_cross1.Thickness = 2
+target_cross1.Color = Color3.fromRGB(255, 0, 0)
+
+local target_cross2 = Drawing.new("Line")
+target_cross2.Visible = false
+target_cross2.ZIndex = 999
+target_cross2.Thickness = 2
+target_cross2.Color = Color3.fromRGB(255, 0, 0)
 
 -- Вспомогательные функции
 local function getMousePosition()
@@ -111,6 +125,25 @@ local function getClosestPlayer()
     return closestPlayer
 end
 
+-- Функция обновления индикатора цели
+local function updateTargetIndicator(position, visible)
+    target_circle.Visible = visible
+    target_cross1.Visible = visible
+    target_cross2.Visible = visible
+    
+    if visible and position then
+        target_circle.Position = position
+        
+        -- Крест внутри круга
+        local crossSize = 8
+        target_cross1.From = Vector2.new(position.X - crossSize, position.Y - crossSize)
+        target_cross1.To = Vector2.new(position.X + crossSize, position.Y + crossSize)
+        
+        target_cross2.From = Vector2.new(position.X + crossSize, position.Y - crossSize)
+        target_cross2.To = Vector2.new(position.X - crossSize, position.Y + crossSize)
+    end
+end
+
 -- Основной хук
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", function(...)
@@ -146,16 +179,15 @@ RunService.RenderStepped:Connect(function()
         if targetData and targetData.Part then
             local screenPos, onScreen = getPositionOnScreen(targetData.Part.Position)
             if onScreen then
-                target_indicator.Visible = true
-                target_indicator.Position = Vector2.new(screenPos.X - 15, screenPos.Y - 15) -- Центрирование
+                updateTargetIndicator(screenPos, true)
             else
-                target_indicator.Visible = false
+                updateTargetIndicator(nil, false)
             end
         else
-            target_indicator.Visible = false
+            updateTargetIndicator(nil, false)
         end
     else
-        target_indicator.Visible = false
+        updateTargetIndicator(nil, false)
     end
 end)
 
@@ -169,7 +201,7 @@ function SilentAim:Toggle(state)
     
     -- Скрываем индикатор при выключении
     if not self.Enabled then
-        target_indicator.Visible = false
+        updateTargetIndicator(nil, false)
     end
     
     return self.Enabled
@@ -206,7 +238,7 @@ end
 function SilentAim:SetShowSilentAimTarget(state)
     self.ShowSilentAimTarget = state
     if not state then
-        target_indicator.Visible = false
+        updateTargetIndicator(nil, false)
     end
 end
 
@@ -214,18 +246,24 @@ function SilentAim:SetFOVColor(color)
     fov_circle.Color = color
 end
 
-function SilentAim:SetTargetImage(imageId)
-    if type(imageId) == "string" or type(imageId) == "number" then
-        target_indicator.Data = "rbxassetid://" .. tostring(imageId)
+function SilentAim:SetTargetColor(color)
+    target_circle.Color = color
+    target_cross1.Color = color
+    target_cross2.Color = color
+end
+
+function SilentAim:SetTargetSize(size)
+    if type(size) == "number" then
+        target_circle.Radius = size
+        local crossSize = size - 4
+        -- Крест будет обновляться автоматически в updateTargetIndicator
     end
 end
 
-function SilentAim:SetTargetImageSize(size)
-    if type(size) == "number" then
-        target_indicator.Size = Vector2.new(size, size)
-    elseif typeof(size) == "Vector2" then
-        target_indicator.Size = size
-    end
+function SilentAim:SetTargetThickness(thickness)
+    target_circle.Thickness = thickness
+    target_cross1.Thickness = thickness
+    target_cross2.Thickness = thickness
 end
 
 -- Горячие клавиши (опционально)
@@ -242,8 +280,14 @@ function SilentAim:Destroy()
     if fov_circle then
         fov_circle:Remove()
     end
-    if target_indicator then
-        target_indicator:Remove()
+    if target_circle then
+        target_circle:Remove()
+    end
+    if target_cross1 then
+        target_cross1:Remove()
+    end
+    if target_cross2 then
+        target_cross2:Remove()
     end
     if oldNamecall then
         hookmetamethod(game, "__namecall", oldNamecall)
@@ -252,5 +296,3 @@ end
 
 -- Экспорт
 return SilentAim
-
-
