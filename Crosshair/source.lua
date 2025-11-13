@@ -1,13 +1,12 @@
-return function()
+local function CreateChromaticCrosshair()
     local ChromaticCrosshair = {}
     
-    -- сервисы
+    -- Сервисы
     local Players = game:GetService("Players")
     local UserInputService = game:GetService("UserInputService")
     local RunService = game:GetService("RunService")
-    local TweenService = game:GetService("TweenService")
     
-    -- кфг
+    -- Конфигурация по умолчанию
     local Config = {
         Enabled = false,
         RotationSpeed = 0.05,
@@ -18,17 +17,18 @@ return function()
         LineLength = 15,
         Thickness = 2,
         DotRadius = 2,
-        LabelText = "iinstality.xyz",
+        LabelText = "CHROMATIC",
         LabelSize = 16,
         HideMouse = true
     }
     
-    -- объекты прицела
+    -- Объекты прицела
     local CrosshairLines = {}
     local Dot, Label
     local connection
     local angle = 0
     
+    -- Функция для получения цвета
     local function getColor(timeOffset)
         if Config.UseRainbowColor then
             local hue = (tick() + timeOffset) % 5 / 5
@@ -38,33 +38,9 @@ return function()
         end
     end
     
+    -- Создание объектов Drawing
     local function createDrawings()
-        -- очистка старых
-        destroyDrawings()
-        
-        for i = 1, Config.LineCount do
-            local line = Drawing.new("Line")
-            line.Thickness = Config.Thickness
-            line.Visible = Config.Enabled
-            table.insert(CrosshairLines, line)
-        end
-
-        Dot = Drawing.new("Circle")
-        Dot.Radius = Config.DotRadius
-        Dot.Filled = true
-        Dot.Visible = Config.Enabled
-        
-        Label = Drawing.new("Text")
-        Label.Text = Config.LabelText
-        Label.Size = Config.LabelSize
-        Label.Center = true
-        Label.Outline = true
-        Label.Visible = Config.Enabled
-        Label.Font = 2
-    end
-    
-    -- удаление Drawing
-    local function destroyDrawings()
+        -- Очистка старых объектов
         for _, line in ipairs(CrosshairLines) do
             if line then
                 line:Remove()
@@ -81,18 +57,37 @@ return function()
             Label:Remove()
             Label = nil
         end
-    end
-    
-    -- управление видимости мыши
-    local function updateMouseVisibility()
-        if Config.HideMouse then
-            UserInputService.MouseIconEnabled = not Config.Enabled
-        else
-            UserInputService.MouseIconEnabled = true
+        
+        -- Создание линий
+        for i = 1, Config.LineCount do
+            local line = Drawing.new("Line")
+            line.Thickness = Config.Thickness
+            line.Visible = Config.Enabled
+            table.insert(CrosshairLines, line)
         end
+        
+        -- Создание точки
+        Dot = Drawing.new("Circle")
+        Dot.Radius = Config.DotRadius
+        Dot.Filled = true
+        Dot.Visible = Config.Enabled
+        
+        -- Создание текста
+        Label = Drawing.new("Text")
+        Label.Text = Config.LabelText
+        Label.Size = Config.LabelSize
+        Label.Center = true
+        Label.Outline = true
+        Label.Visible = Config.Enabled
+        Label.Font = 2
     end
     
-    -- цикл анимки
+    -- Управление видимостью мыши
+    local function updateMouseVisibility()
+        UserInputService.MouseIconEnabled = not (Config.Enabled and Config.HideMouse)
+    end
+    
+    -- Основной цикл анимации
     local function startAnimation()
         if connection then
             connection:Disconnect()
@@ -105,7 +100,7 @@ return function()
             local center = Vector2.new(mousePos.X, mousePos.Y)
             local currentColor = getColor(0)
             
-            -- обновление линий
+            -- Обновление линий прицела
             for i, line in ipairs(CrosshairLines) do
                 local a = angle + (math.pi * 2 / Config.LineCount) * (i - 1)
                 local from = Vector2.new(
@@ -122,27 +117,32 @@ return function()
                 line.Visible = true
             end
             
-            -- обновление точки
-            Dot.Position = center
-            Dot.Color = currentColor
-            Dot.Visible = true
+            -- Обновление точки
+            if Dot then
+                Dot.Position = center
+                Dot.Color = currentColor
+                Dot.Visible = true
+            end
             
-            -- обновление текста
-            Label.Position = Vector2.new(center.X, center.Y + 25)
-            Label.Color = currentColor
-            Label.Visible = true
+            -- Обновление текста
+            if Label then
+                Label.Position = Vector2.new(center.X, center.Y + 25)
+                Label.Color = currentColor
+                Label.Visible = true
+            end
             
             angle += Config.RotationSpeed
         end)
     end
     
+    -- Остановка анимации
     local function stopAnimation()
         if connection then
             connection:Disconnect()
             connection = nil
         end
         
-        -- скрыть все объекты
+        -- Скрываем все объекты
         for _, line in ipairs(CrosshairLines) do
             if line then
                 line.Visible = false
@@ -157,11 +157,11 @@ return function()
             Label.Visible = false
         end
         
-        -- обратно мышку
+        -- Восстанавливаем курсор мыши
         UserInputService.MouseIconEnabled = true
     end
     
-    -- паблик методы
+    -- Публичные методы
     function ChromaticCrosshair:Toggle(state)
         if state ~= nil then
             Config.Enabled = state
@@ -172,17 +172,16 @@ return function()
         if Config.Enabled then
             createDrawings()
             startAnimation()
-            updateMouseVisibility()
         else
             stopAnimation()
-            updateMouseVisibility()
         end
+        updateMouseVisibility()
         
         return Config.Enabled
     end
     
     function ChromaticCrosshair:SetRotationSpeed(speed)
-        Config.RotationSpeed = speed
+        Config.RotationSpeed = speed or 0.05
     end
     
     function ChromaticCrosshair:SetRainbowMode(enabled)
@@ -190,38 +189,52 @@ return function()
     end
     
     function ChromaticCrosshair:SetStaticColor(color)
-        Config.StaticColor = color
+        if color then
+            Config.StaticColor = color
+        end
     end
     
     function ChromaticCrosshair:SetLineCount(count)
-        Config.LineCount = count
-        if Config.Enabled then
-            self:Toggle(false)
-            self:Toggle(true)
+        if count and count > 0 then
+            Config.LineCount = count
+            if Config.Enabled then
+                self:Toggle(false)
+                self:Toggle(true)
+            end
         end
     end
     
     function ChromaticCrosshair:SetRadius(radius)
-        Config.Radius = radius
+        if radius then
+            Config.Radius = radius
+        end
     end
     
     function ChromaticCrosshair:SetLineLength(length)
-        Config.LineLength = length
+        if length then
+            Config.LineLength = length
+        end
     end
     
     function ChromaticCrosshair:SetThickness(thickness)
-        Config.Thickness = thickness
-        if Config.Enabled then
-            for _, line in ipairs(CrosshairLines) do
-                line.Thickness = thickness
+        if thickness then
+            Config.Thickness = thickness
+            if Config.Enabled then
+                for _, line in ipairs(CrosshairLines) do
+                    if line then
+                        line.Thickness = thickness
+                    end
+                end
             end
         end
     end
     
     function ChromaticCrosshair:SetLabelText(text)
-        Config.LabelText = text
-        if Label then
-            Label.Text = text
+        if text then
+            Config.LabelText = text
+            if Label then
+                Label.Text = text
+            end
         end
     end
     
@@ -231,27 +244,46 @@ return function()
     end
     
     function ChromaticCrosshair:GetConfig()
-        return table.clone(Config)
+        local configCopy = {}
+        for k, v in pairs(Config) do
+            configCopy[k] = v
+        end
+        return configCopy
     end
     
     function ChromaticCrosshair:Destroy()
         stopAnimation()
-        destroyDrawings()
-        Config.Enabled = false
-        updateMouseVisibility()
-    end
-    
-    -- после респавна
-    local function init()
-        createDrawings()
+        for _, line in ipairs(CrosshairLines) do
+            if line then
+                line:Remove()
+            end
+        end
+        CrosshairLines = {}
         
-        Players.LocalPlayer.CharacterAdded:Connect(function()
-            task.wait(0.5)
-            updateMouseVisibility()
-        end)
+        if Dot then
+            Dot:Remove()
+            Dot = nil
+        end
+        
+        if Label then
+            Label:Remove()
+            Label = nil
+        end
+        
+        Config.Enabled = false
+        UserInputService.MouseIconEnabled = true
     end
     
-    init()
+    -- Инициализация
+    createDrawings()
+    
+    -- Обработчик респавна
+    Players.LocalPlayer.CharacterAdded:Connect(function()
+        task.wait(1)
+        updateMouseVisibility()
+    end)
     
     return ChromaticCrosshair
 end
+
+return CreateChromaticCrosshair
