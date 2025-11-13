@@ -1,298 +1,262 @@
-if not game:IsLoaded() then 
-    game.Loaded:Wait()
-end
-
-local SilentAim = {
+local SilentAimSettings = {
     Enabled = false,
+    
     TeamCheck = false,
-    VisibleCheck = false,
+    VisibleCheck = false, 
     TargetPart = "HumanoidRootPart",
+    
     FOVRadius = 130,
-    HitChance = 100,
-    ShowFOV = false,
-    ShowSilentAimTarget = false
+    FOVVisible = false,
+    ShowSilentAimTarget = false,
+    ShowTargetColor = Color3.fromRGB(54, 57, 241),
+    
+    MouseHitPrediction = false,
+    MouseHitPredictionAmount = 0.165,
+    HitChance = 100
 }
 
--- Сервисы
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
+-- variables
+getgenv().SilentAimSettings = SilentAimSettings
 
 local Camera = workspace.CurrentCamera
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local GuiService = game:GetService("GuiService")
+local UserInputService = game:GetService("UserInputService")
+
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 
--- FOV Circle
+local WorldToScreen = Camera.WorldToScreenPoint
+local WorldToViewportPoint = Camera.WorldToViewportPoint
+local GetPartsObscuringTarget = Camera.GetPartsObscuringTarget
+local FindFirstChild = game.FindFirstChild
+local RenderStepped = RunService.RenderStepped
+local GetMouseLocation = UserInputService.GetMouseLocation
+
+local resume = coroutine.resume 
+local create = coroutine.create
+
+local ValidTargetParts = {"Head", "HumanoidRootPart"}
+local PredictionAmount = 0.165
+
+-- Drawing objects
+local mouse_box = Drawing.new("Square")
+mouse_box.Visible = false
+mouse_box.ZIndex = 999 
+mouse_box.Color = SilentAimSettings.ShowTargetColor
+mouse_box.Thickness = 20 
+mouse_box.Size = Vector2.new(20, 20)
+mouse_box.Filled = true 
+
 local fov_circle = Drawing.new("Circle")
 fov_circle.Thickness = 1
 fov_circle.NumSides = 100
-fov_circle.Radius = SilentAim.FOVRadius
+fov_circle.Radius = SilentAimSettings.FOVRadius
 fov_circle.Filled = false
-fov_circle.Visible = SilentAim.ShowFOV
+fov_circle.Visible = SilentAimSettings.FOVVisible
+fov_circle.ZIndex = 999
+fov_circle.Transparency = 1
 fov_circle.Color = Color3.fromRGB(54, 57, 241)
 
--- Target Indicator (Vector drawings instead of image)
-local target_circle = Drawing.new("Circle")
-target_circle.Visible = false
-target_circle.ZIndex = 999
-target_circle.Radius = 12
-target_circle.Thickness = 2
-target_circle.Filled = false
-target_circle.Color = Color3.fromRGB(255, 0, 0)
+-- Configuration functions
+local UniversalSilentAim = {}
 
-local target_cross1 = Drawing.new("Line")
-target_cross1.Visible = false
-target_cross1.ZIndex = 999
-target_cross1.Thickness = 2
-target_cross1.Color = Color3.fromRGB(255, 0, 0)
-
-local target_cross2 = Drawing.new("Line")
-target_cross2.Visible = false
-target_cross2.ZIndex = 999
-target_cross2.Thickness = 2
-target_cross2.Color = Color3.fromRGB(255, 0, 0)
-
--- Вспомогательные функции
-local function getMousePosition()
-    return UserInputService:GetMouseLocation()
+function UniversalSilentAim:Toggle(state)
+    SilentAimSettings.Enabled = state
+    mouse_box.Visible = state and SilentAimSettings.ShowSilentAimTarget
 end
 
-local function getPositionOnScreen(vector)
-    local screenPos, onScreen = Camera:WorldToScreenPoint(vector)
-    return Vector2.new(screenPos.X, screenPos.Y), onScreen
+function UniversalSilentAim:SetTeamCheck(state)
+    SilentAimSettings.TeamCheck = state
 end
 
-local function CalculateChance(percentage)
-    percentage = math.floor(percentage)
-    local chance = math.random(0, 100)
-    return chance <= percentage
+function UniversalSilentAim:SetVisibleCheck(state)
+    SilentAimSettings.VisibleCheck = state
 end
 
-local function IsPlayerVisible(player)
-    if not SilentAim.VisibleCheck then return true end
-    
-    local playerChar = player.Character
-    local localChar = LocalPlayer.Character
-    
-    if not (playerChar and localChar) then return false end
-    
-    local playerRoot = playerChar:FindFirstChild("HumanoidRootPart")
-    if not playerRoot then return false end
-    
-    local castPoints = {playerRoot.Position}
-    local ignoreList = {localChar, playerChar}
-    local obscuringObjects = #Camera:GetPartsObscuringTarget(castPoints, ignoreList)
-    
-    return obscuringObjects == 0
-end
-
-local function getClosestPlayer()
-    if not SilentAim.TargetPart then return nil end
-    
-    local closestPlayer = nil
-    local closestDistance = SilentAim.FOVRadius
-    
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player == LocalPlayer then continue end
-        if SilentAim.TeamCheck and player.Team == LocalPlayer.Team then continue end
-        
-        local character = player.Character
-        if not character then continue end
-        
-        if not IsPlayerVisible(player) then continue end
-        
-        local humanoid = character:FindFirstChild("Humanoid")
-        local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-        
-        if not humanoid or not humanoidRootPart or humanoid.Health <= 0 then continue end
-        
-        local screenPos, onScreen = getPositionOnScreen(humanoidRootPart.Position)
-        if not onScreen then continue end
-        
-        local mousePos = getMousePosition()
-        local distance = (mousePos - screenPos).Magnitude
-        
-        if distance <= closestDistance then
-            closestPlayer = {
-                Part = character[SilentAim.TargetPart],
-                Character = character,
-                ScreenPosition = screenPos
-            }
-            closestDistance = distance
-        end
-    end
-    
-    return closestPlayer
-end
-
--- Функция обновления индикатора цели
-local function updateTargetIndicator(position, visible)
-    target_circle.Visible = visible
-    target_cross1.Visible = visible
-    target_cross2.Visible = visible
-    
-    if visible and position then
-        target_circle.Position = position
-        
-        -- Крест внутри круга
-        local crossSize = 8
-        target_cross1.From = Vector2.new(position.X - crossSize, position.Y - crossSize)
-        target_cross1.To = Vector2.new(position.X + crossSize, position.Y + crossSize)
-        
-        target_cross2.From = Vector2.new(position.X + crossSize, position.Y - crossSize)
-        target_cross2.To = Vector2.new(position.X - crossSize, position.Y + crossSize)
+function UniversalSilentAim:SetTargetPart(part)
+    if table.find(ValidTargetParts, part) or part == "Random" then
+        SilentAimSettings.TargetPart = part
     end
 end
 
--- Основной хук
-local oldNamecall
-oldNamecall = hookmetamethod(game, "__namecall", function(...)
-    local method = getnamecallmethod()
-    local args = {...}
-    local self = args[1]
-    
-    if SilentAim.Enabled and self == workspace and method == "Raycast" and CalculateChance(SilentAim.HitChance) then
-        if #args >= 3 and typeof(args[2]) == "Vector3" and typeof(args[3]) == "Vector3" then
-            local targetData = getClosestPlayer()
-            if targetData and targetData.Part then
-                local origin = args[2]
-                local direction = (targetData.Part.Position - origin).Unit * 1000
-                args[3] = direction
-                return oldNamecall(unpack(args))
-            end
-        end
-    end
-    
-    return oldNamecall(...)
-end)
-
--- Обновление индикатора цели
-RunService.RenderStepped:Connect(function()
-    -- Обновление FOV круга
-    if SilentAim.ShowFOV then
-        fov_circle.Position = getMousePosition()
-    end
-    
-    -- Обновление индикатора цели
-    if SilentAim.ShowSilentAimTarget and SilentAim.Enabled then
-        local targetData = getClosestPlayer()
-        if targetData and targetData.Part then
-            local screenPos, onScreen = getPositionOnScreen(targetData.Part.Position)
-            if onScreen then
-                updateTargetIndicator(screenPos, true)
-            else
-                updateTargetIndicator(nil, false)
-            end
-        else
-            updateTargetIndicator(nil, false)
-        end
-    else
-        updateTargetIndicator(nil, false)
-    end
-end)
-
--- Функции для управления настройками
-function SilentAim:Toggle(state)
-    if state ~= nil then
-        self.Enabled = state
-    else
-        self.Enabled = not self.Enabled
-    end
-    
-    -- Скрываем индикатор при выключении
-    if not self.Enabled then
-        updateTargetIndicator(nil, false)
-    end
-    
-    return self.Enabled
+function UniversalSilentAim:SetHitChance(chance)
+    SilentAimSettings.HitChance = math.clamp(chance, 0, 100)
 end
 
-function SilentAim:SetTeamCheck(state)
-    self.TeamCheck = state
-end
-
-function SilentAim:SetVisibleCheck(state)
-    self.VisibleCheck = state
-end
-
-function SilentAim:SetTargetPart(part)
-    if part == "Head" or part == "HumanoidRootPart" then
-        self.TargetPart = part
-    end
-end
-
-function SilentAim:SetFOVRadius(radius)
-    self.FOVRadius = radius
-    fov_circle.Radius = radius
-end
-
-function SilentAim:SetHitChance(chance)
-    self.HitChance = math.clamp(chance, 0, 100)
-end
-
-function SilentAim:SetShowFOV(state)
-    self.ShowFOV = state
+function UniversalSilentAim:SetFOVVisible(state)
+    SilentAimSettings.FOVVisible = state
     fov_circle.Visible = state
 end
 
-function SilentAim:SetShowSilentAimTarget(state)
-    self.ShowSilentAimTarget = state
-    if not state then
-        updateTargetIndicator(nil, false)
+function UniversalSilentAim:SetFOVRadius(radius)
+    SilentAimSettings.FOVRadius = radius
+    fov_circle.Radius = radius
+end
+
+function UniversalSilentAim:SetShowTarget(state)
+    SilentAimSettings.ShowSilentAimTarget = state
+    mouse_box.Visible = state and SilentAimSettings.Enabled
+end
+
+function UniversalSilentAim:SetShowTargetColor(color)
+    SilentAimSettings.ShowTargetColor = color
+    mouse_box.Color = color
+end
+
+function UniversalSilentAim:SetPrediction(state)
+    SilentAimSettings.MouseHitPrediction = state
+end
+
+function UniversalSilentAim:SetPredictionAmount(amount)
+    SilentAimSettings.MouseHitPredictionAmount = amount
+    PredictionAmount = amount
+end
+
+function UniversalSilentAim:GetSettings()
+    return SilentAimSettings
+end
+
+function UniversalSilentAim:LoadSettings(settings)
+    for key, value in pairs(settings) do
+        if SilentAimSettings[key] ~= nil then
+            SilentAimSettings[key] = value
+        end
     end
-end
-
-function SilentAim:SetFOVColor(color)
-    fov_circle.Color = color
-end
-
-function SilentAim:SetTargetColor(color)
-    target_circle.Color = color
-    target_cross1.Color = color
-    target_cross2.Color = color
-end
-
-function SilentAim:SetTargetSize(size)
-    if type(size) == "number" then
-        target_circle.Radius = size
-        local crossSize = size - 4
-        -- Крест будет обновляться автоматически в updateTargetIndicator
-    end
-end
-
-function SilentAim:SetTargetThickness(thickness)
-    target_circle.Thickness = thickness
-    target_cross1.Thickness = thickness
-    target_cross2.Thickness = thickness
-end
-
--- Горячие клавиши (опционально)
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
     
-    if input.KeyCode == Enum.KeyCode.RightAlt then
-        SilentAim:Toggle()
-    end
-end)
-
--- Очистка при отключении
-function SilentAim:Destroy()
-    if fov_circle then
-        fov_circle:Remove()
-    end
-    if target_circle then
-        target_circle:Remove()
-    end
-    if target_cross1 then
-        target_cross1:Remove()
-    end
-    if target_cross2 then
-        target_cross2:Remove()
-    end
-    if oldNamecall then
-        hookmetamethod(game, "__namecall", oldNamecall)
-    end
+    -- Update visual elements
+    fov_circle.Radius = SilentAimSettings.FOVRadius
+    fov_circle.Visible = SilentAimSettings.FOVVisible
+    mouse_box.Color = SilentAimSettings.ShowTargetColor
+    mouse_box.Visible = SilentAimSettings.Enabled and SilentAimSettings.ShowSilentAimTarget
+    PredictionAmount = SilentAimSettings.MouseHitPredictionAmount
 end
 
--- Экспорт
-return SilentAim
+-- Export functions to global scope
+getgenv().UniversalSilentAim = UniversalSilentAim
+
+-- Utility functions
+function CalculateChance(Percentage)
+    Percentage = math.floor(Percentage)
+    local chance = math.floor(Random.new().NextNumber(Random.new(), 0, 1) * 100) / 100
+    return chance <= Percentage / 100
+end
+
+function getPositionOnScreen(Vector)
+    local Vec3, OnScreen = WorldToScreen(Camera, Vector)
+    return Vector2.new(Vec3.X, Vec3.Y), OnScreen
+end
+
+function getDirection(Origin, Position)
+    return (Position - Origin).Unit * 1000
+end
+
+function getMousePosition()
+    return GetMouseLocation(UserInputService)
+end
+
+function IsPlayerVisible(Player)
+    local PlayerCharacter = Player.Character
+    local LocalPlayerCharacter = LocalPlayer.Character
+    
+    if not (PlayerCharacter or LocalPlayerCharacter) then return end 
+    
+    local PlayerRoot = FindFirstChild(PlayerCharacter, SilentAimSettings.TargetPart) or FindFirstChild(PlayerCharacter, "HumanoidRootPart")
+    
+    if not PlayerRoot then return end 
+    
+    local CastPoints, IgnoreList = {PlayerRoot.Position, LocalPlayerCharacter, PlayerCharacter}, {LocalPlayerCharacter, PlayerCharacter}
+    local ObscuringObjects = #GetPartsObscuringTarget(Camera, CastPoints, IgnoreList)
+    
+    return ((ObscuringObjects == 0 and true) or (ObscuringObjects > 0 and false))
+end
+
+function getClosestPlayer()
+    if not SilentAimSettings.TargetPart then return end
+    local Closest
+    local DistanceToMouse
+    for _, Player in next, Players:GetPlayers() do
+        if Player == LocalPlayer then continue end
+        if SilentAimSettings.TeamCheck and Player.Team == LocalPlayer.Team then continue end
+
+        local Character = Player.Character
+        if not Character then continue end
+        
+        if SilentAimSettings.VisibleCheck and not IsPlayerVisible(Player) then continue end
+
+        local HumanoidRootPart = FindFirstChild(Character, "HumanoidRootPart")
+        local Humanoid = FindFirstChild(Character, "Humanoid")
+        if not HumanoidRootPart or not Humanoid or Humanoid and Humanoid.Health <= 0 then continue end
+
+        local ScreenPosition, OnScreen = getPositionOnScreen(HumanoidRootPart.Position)
+        if not OnScreen then continue end
+
+        local Distance = (getMousePosition() - ScreenPosition).Magnitude
+        if Distance <= (DistanceToMouse or SilentAimSettings.FOVRadius or 2000) then
+            Closest = ((SilentAimSettings.TargetPart == "Random" and Character[ValidTargetParts[math.random(1, #ValidTargetParts)]]) or Character[SilentAimSettings.TargetPart])
+            DistanceToMouse = Distance
+        end
+    end
+    return Closest
+end
+
+-- Render loop
+resume(create(function()
+    RenderStepped:Connect(function()
+        if SilentAimSettings.ShowSilentAimTarget and SilentAimSettings.Enabled then
+            if getClosestPlayer() then 
+                local Root = getClosestPlayer().Parent.PrimaryPart or getClosestPlayer()
+                local RootToViewportPoint, IsOnScreen = WorldToViewportPoint(Camera, Root.Position);
+                
+                mouse_box.Visible = IsOnScreen
+                mouse_box.Position = Vector2.new(RootToViewportPoint.X, RootToViewportPoint.Y)
+            else 
+                mouse_box.Visible = false 
+                mouse_box.Position = Vector2.new()
+            end
+        end
+        
+        if SilentAimSettings.FOVVisible then 
+            fov_circle.Position = getMousePosition()
+        end
+    end)
+end))
+
+-- Hooks
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
+    local Method = getnamecallmethod()
+    local Arguments = {...}
+    local self = Arguments[1]
+    local chance = CalculateChance(SilentAimSettings.HitChance)
+    
+    if SilentAimSettings.Enabled and self == workspace and not checkcaller() and chance == true and Method == "Raycast" then
+        local A_Origin = Arguments[2]
+
+        local HitPart = getClosestPlayer()
+        if HitPart then
+            Arguments[3] = getDirection(A_Origin, HitPart.Position)
+            return oldNamecall(unpack(Arguments))
+        end
+    end
+
+    return oldNamecall(...)
+end))
+
+local oldIndex = nil 
+oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, Index)
+    if self == Mouse and not checkcaller() and SilentAimSettings.Enabled and getClosestPlayer() then
+        local HitPart = getClosestPlayer()
+         
+        if Index == "Target" or Index == "target" then 
+            return HitPart
+        elseif Index == "Hit" or Index == "hit" then 
+            return ((SilentAimSettings.MouseHitPrediction and (HitPart.CFrame + (HitPart.Velocity * PredictionAmount))) or (not SilentAimSettings.MouseHitPrediction and HitPart.CFrame))
+        end
+    end
+
+    return oldIndex(self, Index)
+end))
+
+return UniversalSilentAim
