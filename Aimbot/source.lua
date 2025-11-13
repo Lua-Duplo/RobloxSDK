@@ -1,5 +1,14 @@
+if not game:IsLoaded() then 
+    game.Loaded:Wait()
+end
+
+if not syn or not protectgui then
+    getgenv().protectgui = function() end
+end
+
 local SilentAimSettings = {
     Enabled = false,
+    
     TeamCheck = false,
     VisibleCheck = false, 
     TargetPart = "HumanoidRootPart",
@@ -15,6 +24,8 @@ local SilentAimSettings = {
 }
 
 -- variables
+getgenv().SilentAimSettings = SilentAimSettings
+
 local Camera = workspace.CurrentCamera
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -152,12 +163,14 @@ function CalculateChance(Percentage)
     return chance <= Percentage / 100
 end
 
--- Функции для загрузки в другом меню
 function Configuration.GetSettings()
     return SilentAimSettings
 end
 
 function Configuration.ApplySettings(settings)
+    for key, value in pairs(settings) do
+        SilentAimSettings[key] = value
+    end
     
     -- Apply visual settings
     fov_circle.Visible = SilentAimSettings.FOVVisible
@@ -236,15 +249,6 @@ local function getClosestPlayer()
     end
     return Closest
 end
-
--- Input handling for toggle key
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    
-    if input.KeyCode == Enum.KeyCode[SilentAimSettings.ToggleKey] then
-        Configuration.ToggleEnabled(not SilentAimSettings.Enabled)
-    end
-end)
 
 resume(create(function()
     RenderStepped:Connect(function()
@@ -355,6 +359,4 @@ oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, Index)
 end))
 
 -- Экспорт функций для использования в других меню
-getgenv().UniversalSilentAim = Configuration
-
-
+getgenv().silentaim = Configuration
