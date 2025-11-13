@@ -17,7 +17,7 @@ local function CreateChromaticCrosshair()
         LineLength = 15,
         Thickness = 2,
         DotRadius = 2,
-        LabelText = "CHROMATIC",
+        LabelText = "iinstality.xyz",
         LabelSize = 16,
         HideMouse = true
     }
@@ -287,3 +287,4 @@ local function CreateChromaticCrosshair()
 end
 
 return CreateChromaticCrosshair
+
