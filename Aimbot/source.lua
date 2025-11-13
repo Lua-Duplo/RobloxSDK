@@ -9,12 +9,14 @@ local SilentAim = {
     TargetPart = "HumanoidRootPart",
     FOVRadius = 130,
     HitChance = 100,
-    ShowFOV = false
+    ShowFOV = false,
+    ShowSilentAimTarget = false
 }
 
 -- Сервисы
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
@@ -28,6 +30,13 @@ fov_circle.Radius = SilentAim.FOVRadius
 fov_circle.Filled = false
 fov_circle.Visible = SilentAim.ShowFOV
 fov_circle.Color = Color3.fromRGB(54, 57, 241)
+
+-- Target Indicator (Image)
+local target_indicator = Drawing.new("Image")
+target_indicator.Visible = false
+target_indicator.ZIndex = 999
+target_indicator.Size = Vector2.new(30, 30)
+target_indicator.Data = "rbxassetid://7072718366" -- Красная цель (можно заменить на другую картинку)
 
 -- Вспомогательные функции
 local function getMousePosition()
@@ -90,7 +99,11 @@ local function getClosestPlayer()
         local distance = (mousePos - screenPos).Magnitude
         
         if distance <= closestDistance then
-            closestPlayer = character[SilentAim.TargetPart]
+            closestPlayer = {
+                Part = character[SilentAim.TargetPart],
+                Character = character,
+                ScreenPosition = screenPos
+            }
             closestDistance = distance
         end
     end
@@ -107,10 +120,10 @@ oldNamecall = hookmetamethod(game, "__namecall", function(...)
     
     if SilentAim.Enabled and self == workspace and method == "Raycast" and CalculateChance(SilentAim.HitChance) then
         if #args >= 3 and typeof(args[2]) == "Vector3" and typeof(args[3]) == "Vector3" then
-            local hitPart = getClosestPlayer()
-            if hitPart then
+            local targetData = getClosestPlayer()
+            if targetData and targetData.Part then
                 local origin = args[2]
-                local direction = (hitPart.Position - origin).Unit * 1000
+                local direction = (targetData.Part.Position - origin).Unit * 1000
                 args[3] = direction
                 return oldNamecall(unpack(args))
             end
@@ -120,6 +133,32 @@ oldNamecall = hookmetamethod(game, "__namecall", function(...)
     return oldNamecall(...)
 end)
 
+-- Обновление индикатора цели
+RunService.RenderStepped:Connect(function()
+    -- Обновление FOV круга
+    if SilentAim.ShowFOV then
+        fov_circle.Position = getMousePosition()
+    end
+    
+    -- Обновление индикатора цели
+    if SilentAim.ShowSilentAimTarget and SilentAim.Enabled then
+        local targetData = getClosestPlayer()
+        if targetData and targetData.Part then
+            local screenPos, onScreen = getPositionOnScreen(targetData.Part.Position)
+            if onScreen then
+                target_indicator.Visible = true
+                target_indicator.Position = Vector2.new(screenPos.X - 15, screenPos.Y - 15) -- Центрирование
+            else
+                target_indicator.Visible = false
+            end
+        else
+            target_indicator.Visible = false
+        end
+    else
+        target_indicator.Visible = false
+    end
+end)
+
 -- Функции для управления настройками
 function SilentAim:Toggle(state)
     if state ~= nil then
@@ -127,6 +166,12 @@ function SilentAim:Toggle(state)
     else
         self.Enabled = not self.Enabled
     end
+    
+    -- Скрываем индикатор при выключении
+    if not self.Enabled then
+        target_indicator.Visible = false
+    end
+    
     return self.Enabled
 end
 
@@ -158,14 +203,37 @@ function SilentAim:SetShowFOV(state)
     fov_circle.Visible = state
 end
 
+function SilentAim:SetShowSilentAimTarget(state)
+    self.ShowSilentAimTarget = state
+    if not state then
+        target_indicator.Visible = false
+    end
+end
+
 function SilentAim:SetFOVColor(color)
     fov_circle.Color = color
 end
 
--- Обновление FOV круга
-RunService.RenderStepped:Connect(function()
-    if SilentAim.ShowFOV then
-        fov_circle.Position = getMousePosition()
+function SilentAim:SetTargetImage(imageId)
+    if type(imageId) == "string" or type(imageId) == "number" then
+        target_indicator.Data = "rbxassetid://" .. tostring(imageId)
+    end
+end
+
+function SilentAim:SetTargetImageSize(size)
+    if type(size) == "number" then
+        target_indicator.Size = Vector2.new(size, size)
+    elseif typeof(size) == "Vector2" then
+        target_indicator.Size = size
+    end
+end
+
+-- Горячие клавиши (опционально)
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    
+    if input.KeyCode == Enum.KeyCode.RightAlt then
+        SilentAim:Toggle()
     end
 end)
 
@@ -173,6 +241,9 @@ end)
 function SilentAim:Destroy()
     if fov_circle then
         fov_circle:Remove()
+    end
+    if target_indicator then
+        target_indicator:Remove()
     end
     if oldNamecall then
         hookmetamethod(game, "__namecall", oldNamecall)
