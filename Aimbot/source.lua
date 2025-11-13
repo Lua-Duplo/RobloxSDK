@@ -1,8 +1,5 @@
 local SilentAimSettings = {
     Enabled = false,
-    
-    ToggleKey = "RightAlt",
-    
     TeamCheck = false,
     VisibleCheck = false, 
     TargetPart = "HumanoidRootPart",
@@ -155,69 +152,12 @@ function CalculateChance(Percentage)
     return chance <= Percentage / 100
 end
 
--- File handling
-do 
-    if not isfolder(MainFileName) then 
-        makefolder(MainFileName);
-    end
-    
-    if not isfolder(string.format("%s/%s", MainFileName, tostring(game.PlaceId))) then 
-        makefolder(string.format("%s/%s", MainFileName, tostring(game.PlaceId)))
-    end
-end
-
-local Files = listfiles(string.format("%s/%s", "UniversalSilentAim", tostring(game.PlaceId)))
-
-function GetFiles()
-	local out = {}
-	for i = 1, #Files do
-		local file = Files[i]
-		if file:sub(-4) == '.lua' then
-			local pos = file:find('.lua', 1, true)
-			local start = pos
-
-			local char = file:sub(pos, pos)
-			while char ~= '/' and char ~= '\\' and char ~= '' do
-				pos = pos - 1
-				char = file:sub(pos, pos)
-			end
-
-			if char == '/' or char == '\\' then
-				table.insert(out, file:sub(pos + 1, start - 1))
-			end
-		end
-	end
-	return out
-end
-
-function UpdateFile(FileName)
-    assert(FileName and type(FileName) == "string", "FileName must be a string")
-    writefile(string.format("%s/%s/%s.lua", MainFileName, tostring(game.PlaceId), FileName), HttpService:JSONEncode(SilentAimSettings))
-end
-
-function LoadFile(FileName)
-    assert(FileName and type(FileName) == "string", "FileName must be a string")
-    
-    local File = string.format("%s/%s/%s.lua", MainFileName, tostring(game.PlaceId), FileName)
-    if isfile(File) then
-        local ConfigData = HttpService:JSONDecode(readfile(File))
-        for Index, Value in next, ConfigData do
-            SilentAimSettings[Index] = Value
-        end
-        return true
-    end
-    return false
-end
-
 -- Функции для загрузки в другом меню
 function Configuration.GetSettings()
     return SilentAimSettings
 end
 
 function Configuration.ApplySettings(settings)
-    for key, value in pairs(settings) do
-        SilentAimSettings[key] = value
-    end
     
     -- Apply visual settings
     fov_circle.Visible = SilentAimSettings.FOVVisible
@@ -416,4 +356,5 @@ end))
 
 -- Экспорт функций для использования в других меню
 getgenv().UniversalSilentAim = Configuration
+
 
