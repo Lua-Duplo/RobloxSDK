@@ -36,7 +36,7 @@ local target_indicator = Drawing.new("Image")
 target_indicator.Visible = false
 target_indicator.ZIndex = 999
 target_indicator.Size = Vector2.new(30, 30)
-target_indicator.Data = "rbxassetid://10868459539"
+target_indicator.Data = "rbxassetid://5998624788"
 
 -- Вспомогательные функции
 local function getMousePosition()
@@ -252,4 +252,5 @@ end
 
 -- Экспорт
 return SilentAim
+
 
