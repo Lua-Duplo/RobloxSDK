@@ -1,12 +1,3 @@
--- init
-if not game:IsLoaded() then 
-    game.Loaded:Wait()
-end
-
-if not syn or not protectgui then
-    getgenv().protectgui = function() end
-end
-
 local SilentAimSettings = {
     Enabled = false,
     
@@ -425,3 +416,4 @@ end))
 
 -- Экспорт функций для использования в других меню
 getgenv().UniversalSilentAim = Configuration
+
