@@ -1,5 +1,6 @@
 local Players = game:GetService("Players")
 local SoundService = game:GetService("SoundService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
 
@@ -8,22 +9,73 @@ local currentSoundId = DEFAULT_SOUND_ID
 
 local function setupDamageSoundSystem(character)
     local humanoid = character:WaitForChild("Humanoid")
-    local lastHealth = humanoid.Health
-
-    local function onHealthChanged(newHealth)
-        if newHealth < lastHealth then
-            local sound = Instance.new("Sound")
-            sound.SoundId = "rbxassetid://" .. currentSoundId
-            sound.Volume = 0.5
-            sound.Parent = SoundService
-            sound:Play()
-            
-            game:GetService("Debris"):AddItem(sound, sound.TimeLength + 1)
-        end
-        lastHealth = newHealth
+    
+    local function playDamageSound()
+        local sound = Instance.new("Sound")
+        sound.SoundId = "rbxassetid://" .. currentSoundId
+        sound.Volume = 0.5
+        sound.Parent = SoundService
+        sound:Play()
+        
+        game:GetService("Debris"):AddItem(sound, sound.TimeLength + 1)
     end
 
-    humanoid.HealthChanged:Connect(onHealthChanged)
+    local function setupRemoteListener()
+        local damageEvent
+        while not damageEvent do
+            wait(1)
+            for _, item in pairs(ReplicatedStorage:GetChildren()) do
+                if item:IsA("RemoteEvent") and (
+                    string.lower(item.Name):find("damage") or 
+                    string.lower(item.Name):find("hit") or
+                    string.lower(item.Name):find("attack")
+                ) then
+                    damageEvent = item
+                    break
+                end
+            end
+        end
+        
+        damageEvent.OnClientEvent:Connect(function(target, damage)
+            if target and target:IsA("Model") then
+                local targetHumanoid = target:FindFirstChild("Humanoid")
+                if targetHumanoid and target ~= character then
+                    playDamageSound()
+                end
+            end
+        end)
+    end
+
+    local function setupToolListener()
+        local function onChildAdded(child)
+            if child:IsA("Tool") then
+                child.Activated:Connect(function()
+                    playDamageSound()
+                end)
+            end
+        end
+        
+        character.ChildAdded:Connect(onChildAdded)
+        
+        for _, child in pairs(character:GetChildren()) do
+            if child:IsA("Tool") then
+                onChildAdded(child)
+            end
+        end
+    end
+
+    local function setupHumanoidListener()
+        humanoid.GetPropertyChangedSignal("Health"):Connect(function()
+            local recentDamage = humanoid:GetAttribute("LastDamageSource")
+            if recentDamage and recentDamage == player then
+                playDamageSound()
+            end
+        end)
+    end
+
+    coroutine.wrap(setupRemoteListener)()
+    setupToolListener()
+    setupHumanoidListener()
 end
 
 local DamageSoundModule = {}
@@ -52,19 +104,26 @@ function DamageSoundModule.getDefaultSound()
     return DEFAULT_SOUND_ID
 end
 
--- Initialize the system
+function DamageSoundModule.playSound()
+    local sound = Instance.new("Sound")
+    sound.SoundId = "rbxassetid://" .. currentSoundId
+    sound.Volume = 0.5
+    sound.Parent = SoundService
+    sound:Play()
+    
+    game:GetService("Debris"):AddItem(sound, sound.TimeLength + 1)
+end
+
 function DamageSoundModule.init()
-    -- Handle character respawn
     player.CharacterAdded:Connect(function(character)
         setupDamageSoundSystem(character)
     end)
 
-    -- Handle initial character
     if player.Character then
         setupDamageSoundSystem(player.Character)
     end
     
-    print("Damage sound system initialized")
+    print("Damage sound system initialized - will play when dealing damage to others")
 end
 
 return DamageSoundModule
